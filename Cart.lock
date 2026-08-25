@@ -3,7 +3,7 @@ version = 1
 [[package]]
 name = "std"
 version = "0.5.0"
-checksum = "118d110b8b4d3cabadd27bbfd5e23c0ad9847558ba6bd2f999a9df7b95c78b45"
+checksum = "00dfc0b1348ff5d5b449ba273b33c023f0ca198ed04b52feb06e27442a1c6546"
 
 [package.source]
 type = "git"
