@@ -3,9 +3,8 @@ version = 1
 [[package]]
 name = "std"
 version = "0.5.0"
-checksum = "00dfc0b1348ff5d5b449ba273b33c023f0ca198ed04b52feb06e27442a1c6546"
+checksum = "3476873fd3943ac703ac5b5edd6c98b6b924c2210ae3f3d686f26355e96cebb3"
 
 [package.source]
-type = "git"
-url = "https://github.com/op-language/std"
-sha = ""
+type = "path"
+dir = "../std"
