@@ -1,16 +1,12 @@
 //! DMG Demo Game
 //!
 //! Displays the text "Op Code!" using the NES font. The std Game Boy
-//! font functions rely on Z80-style load idioms (ld h,#n, ld (hl),a,
-//! ld a,(de), ld b,a) that the SM83 backend cannot encode, so this
-//! demo loads the font and writes the tile map itself using only the
-//! working SM83 subset (ld #n, ld_a (nn), ld_addr (nn), ldh #n, ldh
-//! (n), ld_hl/ld_de/ld_bc #nn, ld_a_hl/ld_a_bc/ld_a_de, inc_hl/de/bc,
-//! ldi=LD (HL+),A, dec, cp, jp, do/while/loop).
+//! font functions rely on Z80-style load idioms the SM83 backend cannot
+//! encode, so this demo loads the font and writes the tile map itself.
 //!
-//! The tile data is the std NES font (255 8x8 1bpp glyphs, char code
-//! = tile index) expanded to the Game Boy 2bpp format (plane 0 then
-//! plane 1 per row) for fg=0, bg=3.
+//! The tile data is the std NES font (255 8x8 1bpp glyphs, char code =
+//! tile index) expanded to GB 2bpp (plane 0 then plane 1 per row) for
+//! fg=0, bg=3.
 
 use std::cpu::*;
 use std::machine::*;
@@ -277,12 +273,8 @@ const FONT_DATA: [u8; 4080] = [
 
 // --- Reset entry -------------------------------------------------------------
 //
-// The GB cartridge header occupies 0x0100-0x017E (entry vector, logo,
-// title, CGB/MBC/ROM-size/checksum bytes written by the linker/output).
-// The vblank vector is at 0x0040. To keep executable code clear of both,
-// main() is a 0x180-byte trampoline: a JP to real_main followed by 381
-// NOPs. The header bytes overwrite NOPs in the trampoline (harmless;
-// they are never executed). real_main lands at 0x0180.
+// The GB header occupies 0x0100-0x017E. main() is a 0x180-byte trampoline:
+// JP real_main + 381 NOPs. Header bytes overwrite NOPs (never executed).
 
 #[interrupt(reset)]
 noreturn fn main() {
@@ -674,15 +666,9 @@ noreturn fn main() {
 
 #[rom(org = 0x0000, bank = 0, maxsize = 0x8000)] {
 
-    // real_main is a placement root (declared first in the rom block) so
-    // it is placed right after main() at 0x0180. Everything is inlined
-    // here (no function calls) so no stack pointer is needed.
-
     fn real_main() {
         di
-        // Wait for vblank before turning the LCD off, so the off takes
-        // effect cleanly at the frame boundary (the boot ROM leaves the
-        // LCD on; writing VRAM while it is on is blocked in mode 3).
+        // Wait for vblank before turning LCD off (boot ROM leaves it on).
         do {
             ldh #LCD::LINE
             cp #144
@@ -693,14 +679,10 @@ noreturn fn main() {
         ldh (LCD::SCROLL_Y)
         ld #0
         ldh (LCD::SCROLL_X)
-        // Dummy reference so FONT_DATA is placed in ROM. The array
-        // const's value resolves to its length, so the address cannot
-        // be loaded directly; instead a 1-byte marker function is
-        // placed immediately before the font data (see font_marker
-        // below) and its address is used as the source pointer.
+        // Dummy reference so FONT_DATA is placed in ROM.
         ld #len!(FONT_DATA)
         // Load font: 4080 bytes from FONT_DATA to VRAM 0x8000.
-        // ldi = LD (HL+),A so HL is the destination pointer, DE the source.
+        // ldi = LD (HL+),A so HL is dest, DE is source.
         // 4080 = 15*256 + 240.
         ld_de #font_marker
         inc_de
@@ -732,7 +714,25 @@ noreturn fn main() {
             dec
             ld_addr (cnt_a)
         } while (not zero)
-        // Write "Op Code!" at row 2, col 2 -> 0x9800 + 2*32 + 2 = 0x9842.
+        // Clear tile map (1024 bytes = 4*256) to tile 0.
+        ld_hl #0x9800
+        ld #4
+        ld_addr (cnt_b)
+        do {
+            ld #0
+            ld_addr (cnt_a)
+            do {
+                ld #0
+                ldi
+                ld_a (cnt_a)
+                dec
+                ld_addr (cnt_a)
+            } while (not zero)
+            ld_a (cnt_b)
+            dec
+            ld_addr (cnt_b)
+        } while (not zero)
+        // Write "Op Code!" at row 2, col 2 -> 0x9842.
         ld_hl #0x9842
         ld #0x4F
         ldi
@@ -750,48 +750,24 @@ noreturn fn main() {
         ldi
         ld #0x21
         ldi
-        // Background palette: 0xE4 -> color0=white(0), color3=black(3).
-        // Font fg=0 (white), bg=3 (black) -> white text on black.
+        // Palette: BGP=0xE4 (color0=white, color3=black).
         ld #0xE4
         ldh (LCD::BG_PALETTE)
-        // LCD on: bit7 display enable, bit4 tile data at 0x8000
-        // (unsigned), bit0 BG enable -> 0x91.
+        // LCD on: 0x91 = display + 0x8000 tiles + BG enable.
         ld #0x91
         ldh (LCD::CONTROL)
-        // Main loop: wait for vblank (LY == 144) then re-write the
-        // tile map each frame so the text is always present regardless
-        // of when the display is sampled.
+        // Main loop: wait for vblank.
         loop {
             do {
                 ldh #LCD::LINE
                 cp #144
             } while (not zero)
-            ld_hl #0x9842
-            ld #0x4F
-            ldi
-            ld #0x70
-            ldi
-            ld #0x20
-            ldi
-            ld #0x43
-            ldi
-            ld #0x6F
-            ldi
-            ld #0x64
-            ldi
-            ld #0x65
-            ldi
-            ld #0x21
-            ldi
         }
     }
 
-    // font_marker is an empty function: it compiles to a single RET
-    // (0xC9). It is placed as the last function (declared last in the
-    // rom block), and FONT_DATA is the only referenced const, so the
-    // font data is emitted immediately after this byte. real_main uses
-    // ld_de #font_marker / inc_de to point DE at the start of FONT_DATA.
-
+    // font_marker: empty fn -> 1 byte (RET). Placed last; FONT_DATA
+    // (the only referenced const) follows immediately. real_main uses
+    // ld_de #font_marker / inc_de to point DE at &FONT_DATA.
     fn font_marker() {
     }
 }
