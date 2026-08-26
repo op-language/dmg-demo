@@ -5,6 +5,18 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0]
+
+### Changed
+- Refactored to a single `main` function with `#[interrupt(reset)]`
+  containing the real code. Removed the `real_main` function and the
+  380-nop trampoline. The compiler now handles the cartridge header
+  reservation and reset vector layout automatically.
+- Removed empty `{ }` blocks from `#[rom]` and `#[ram]` attributes.
+- Uses the `std` library font API (`font_init`, `font_load`, `cls`,
+  `draw_text`) to display "Op Code!" with dark text on a light
+  background (DMG palette 0xE4).
+
 ## [0.1.0]
 
 ### Added

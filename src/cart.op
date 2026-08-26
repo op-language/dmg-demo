@@ -1,155 +1,49 @@
 //! DMG Demo Game
 //!
-//! This file is a port of the nes-demo to the Game Boy. It displays
-//! the text "Op Code!" and cycles the four DMG monochrome background
-//! palette shades.
+//! Displays the text "Op Code!" using the NES font via the std font
+//! API (font_init, font_load, cls, draw_text).
 
 use std::cpu::*;
 use std::machine::*;
+use std::font::*;
 
-// --- font loading ----------------------------------------------------------
-
-fn copy_font() {
-    // HL = VRAM pattern table (0x8000)
-    ld_hl #0x8000
-    // DE = font data in ROM (at 0x7F00, end of bank 0)
-    ld_de #0x4000
-    // B = 128 (byte count)
-    ld #128
-'copy_loop:
-    // Load byte from (DE) into A
-    ld_a_de
-    // Store A to (HL+)
-    ldi
-    // Increment DE
-    inc_de
-    // Decrement counter (A)
-    dec
-    if (not zero) {
-        jp 'copy_loop
-    }
-}
-
-// --- text display ----------------------------------------------------------
-
-fn pad1() {
-    nop
-    nop
-    nop
-    nop
-    nop
-    nop
-    nop
-    nop
-    nop
-    nop
-    nop
-    nop
-    nop
-}
-
-fn write_text() {
-    // Set HL to tile map 0 at row 2 (offset 0x20 = 32 tiles).
-    ld_hl #0x9820
-    // Write tile indices for "Op Code!".
-    // Tile 0 = blank/space, 1 = O, 2 = p, 3 = C, 4 = o, 5 = d, 6 = e, 7 = !
-    ld #1
-    ldi
-    ld #2
-    ldi
-    ld #0
-    ldi
-    ld #3
-    ldi
-    ld #4
-    ldi
-    ld #5
-    ldi
-    ld #6
-    ldi
-    ld #7
-    ldi
-}
-
-// --- vblank wait -----------------------------------------------------------
-
-fn wait_vblank() {
-    do {
-        ldh #LCD::STATUS
-        and #3
-    } while (zero)
-    do {
-        ldh #LCD::STATUS
-        and #3
-    } while (not zero)
-}
-
-// --- palette animation -----------------------------------------------------
-
-palcol: u8;
-
-fn pal_animate() {
-    ld_a (palcol)
-    add #1
-    and #3
-    ld_addr (palcol)
-    ldh (LCD::BG_PALETTE)
-}
-
-// --- main entry point ------------------------------------------------------
+const HELLO: [u8; 8] = "Op Code!";
 
 #[interrupt(reset)]
 noreturn fn main() {
-    // Disable the LCD.
-    ld #0
-    ldh (LCD::CONTROL)
-    // Load font tiles into VRAM pattern table.
-    copy_font()
-    // Padding to push write_text past the vblank vector at 0x0040.
-    pad1()
-    // Write tile indices to the tile map.
-    write_text()
-    // Set the initial background palette to all white (shade 0).
-    ld #0
-    ld_addr (palcol)
+    di
+    // Wait for vblank before touching the LCD (boot ROM leaves it on).
+    do {
+        ldh #LCD::LINE
+        cp #144
+    } while (not zero)
+    system_initialize()
+    font_init()
+    set_text_color(3, 0)
+    font_load(FONT_NES_SMALL_NORMAL)
+    cls()
+    draw_text(2, 2, HELLO, len!(HELLO))
+    // DMG background palette: colour 0 = light, colour 3 = dark.
+    ld #0xE4
     ldh (LCD::BG_PALETTE)
-    // Enable the LCD with background display.
-    ld #LCD_BG_ENABLE
+    // LCD on: 0x91 = display + 0x8000 tiles + BG enable.
+    ld #0x91
     ldh (LCD::CONTROL)
-    // Main loop: wait for vblank, cycle the palette.
     loop {
-        wait_vblank()
-        pal_animate()
+        do {
+            ldh #LCD::LINE
+            cp #144
+        } while (not zero)
     }
 }
-
-// --- vblank interrupt handler ----------------------------------------------
 
 #[interrupt(vblank)]
 fn vblank() {
     reti
 }
 
-// --- GB cartridge header ---------------------------------------------------
-
-#[gb(title = "DMG DEMO", cgb = "false", mbc = "mbc3")]
-
-// --- RAM variables (GB work RAM at 0xC000) ---------------------------------
-
-#[ram(org = 0xC000, maxsize = 0x100)] {
-}
-
-// --- ROM (code in bank 0, 32KB) --------------------------------------------
-
-#[rom(org = 0x0000, bank = 0, maxsize = 0x8000)] {
-}
-
-// --- ROM (font data in bank 1, 16KB) --------------------------------------
-
-#[rom(org = 0x4000, bank = 1, maxsize = 0x4000)] {
-    locate_bytes!("font.2bpp")
-}
-
-// --- padding ---------------------------------------------------------------
-
+// define the structure of the cart
+#[gb(title = "DMG DEMO", cgb = "false", mbc = "rom")]
+#[rom(org = 0x0000, bank = 0, maxsize = 0x8000)]
+#[ram(org = 0xC000, maxsize = 0x100)]
 #[setpad(0x00)]
