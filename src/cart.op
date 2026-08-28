@@ -1,13 +1,25 @@
 //! DMG Demo Game
 //!
-//! Displays the text "Op Code!" using the NES font via the std font
-//! API (font_init, font_load, cls, draw_text).
+//! Displays six lines of text, one per bundled font. Each line shows
+//! the capitalized simple name of the font that renders it. Only the
+//! glyphs the six names use are loaded into VRAM (font_load_string
+//! copies one tile slot per character). The demo cycles the DMG
+//! background palette in lockstep: all four shades step together
+//! through 0x40, 0x81, 0xC2, 0x03, one step every 6 vblanks.
 
 use std::cpu::*;
 use std::machine::*;
 use std::font::*;
 
-const HELLO: [u8; 8] = "Op Code!";
+const NAME_NES: [u8; 3] = "Nes";
+const NAME_IBM: [u8; 3] = "Ibm";
+const NAME_IBM_FIXED: [u8; 9] = "Ibm Fixed";
+const NAME_ITALIC: [u8; 6] = "Italic";
+const NAME_SPECT: [u8; 5] = "Spect";
+const NAME_MIN: [u8; 3] = "Min";
+
+_pal_step: u8;
+_frame_cnt: u8;
 
 #[interrupt(reset)]
 noreturn fn main() {
@@ -19,21 +31,83 @@ noreturn fn main() {
     } while (not zero)
     system_initialize()
     font_init()
+    font_init_remap()
     set_text_color(3, 0)
-    font_load(FONT_NES_SMALL_NORMAL)
+    // Load and draw each line in order. Each line is drawn while its
+    // font's remap entries are current: the six names share
+    // characters (I, i, e, t, c, ...), and each font_load_string
+    // overwrites the shared entries, so a line drawn after later
+    // loads would point at the wrong font's glyphs. Tile map entries
+    // already written keep their absolute slots.
+    // The first font_load_string disables the LCD, so cls() runs with
+    // VRAM writes allowed.
+    font_load_string(FONT_NES_SMALL_NORMAL, NAME_NES, len!(NAME_NES))
     cls()
-    draw_text(2, 2, HELLO, len!(HELLO))
-    // DMG background palette: colour 0 = light, colour 3 = dark.
-    ld #0xE4
+    draw_text(2, 2, NAME_NES, len!(NAME_NES))
+    font_load_string(FONT_IBM_SMALL_NORMAL, NAME_IBM, len!(NAME_IBM))
+    draw_text(2, 3, NAME_IBM, len!(NAME_IBM))
+    font_load_string(FONT_IBM_FIXED_SMALL_NORMAL, NAME_IBM_FIXED, len!(NAME_IBM_FIXED))
+    draw_text(2, 4, NAME_IBM_FIXED, len!(NAME_IBM_FIXED))
+    font_load_string(FONT_ITALIC_SMALL_NORMAL, NAME_ITALIC, len!(NAME_ITALIC))
+    draw_text(2, 5, NAME_ITALIC, len!(NAME_ITALIC))
+    font_load_string(FONT_SPECT_SMALL_NORMAL, NAME_SPECT, len!(NAME_SPECT))
+    draw_text(2, 6, NAME_SPECT, len!(NAME_SPECT))
+    font_load_string(FONT_MIN_SMALL_NORMAL, NAME_MIN, len!(NAME_MIN))
+    draw_text(2, 7, NAME_MIN, len!(NAME_MIN))
+    // DMG background palette, step 0: colour 0 = light, colour 3 = dark.
+    ld #0x40
     ldh (LCD::BG_PALETTE)
     // LCD on: 0x91 = display + 0x8000 tiles + BG enable.
     ld #0x91
     ldh (LCD::CONTROL)
+    assign(_pal_step, 0)
+    assign(_frame_cnt, 0)
     loop {
         do {
             ldh #LCD::LINE
             cp #144
         } while (not zero)
+        // One palette step every 6 vblanks.
+        ld_a (_frame_cnt)
+        inc
+        ld_addr (_frame_cnt)
+        cp #30
+        if (not zero) { jp 'frame_wait' }
+        assign(_frame_cnt, 0)
+        // _pal_step = (_pal_step + 1) % 4.
+        ld_a (_pal_step)
+        inc
+        cp #4
+        if (not zero) { jp 'pal_store' }
+        ld #0
+        'pal_store:
+        ld_addr (_pal_step)
+        // BGP from _pal_step: 0x40, 0x81, 0xC2, 0x03.
+        ld_a (_pal_step)
+        cp #0
+        if (zero) { jp 'pal_0' }
+        cp #1
+        if (zero) { jp 'pal_1' }
+        cp #2
+        if (zero) { jp 'pal_2' }
+        ld #0x03
+        jp 'pal_write'
+        'pal_0:
+        ld #0x40
+        jp 'pal_write'
+        'pal_1:
+        ld #0x81
+        jp 'pal_write'
+        'pal_2:
+        ld #0xC2
+        'pal_write:
+        ldh (LCD::BG_PALETTE)
+        // Wait for the vblank to end (LY != 144) before polling again.
+        'frame_wait:
+        do {
+            ldh #LCD::LINE
+            cp #144
+        } while (zero)
     }
 }
 

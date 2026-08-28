@@ -1,6 +1,6 @@
 [package]
 name = "dmg-demo"
-version = "0.2.0"
+version = "0.3.0"
 edition = "1"
 
 [[rom]]
@@ -10,7 +10,7 @@ target = "sm83-nintendo-gameboy"
 format = "gb"
 
 [dependencies]
-std = { version = "0.6.0", path = "../std" }
+std = { version = "0.7.0", path = "../std" }
 
 [features]
 debug = []

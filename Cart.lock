@@ -2,8 +2,8 @@ version = 1
 
 [[package]]
 name = "std"
-version = "0.6.0"
-checksum = "f20c0b5abf81d584753f214811e9583ba06e65260619d8c6a878dbb21255e22a"
+version = "0.7.0"
+checksum = "756da348ab39fe11ef847bf35e0d99a79b80fe5cbef553cdfe847b9731f98554"
 
 [package.source]
 type = "path"
